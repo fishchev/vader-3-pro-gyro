@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>Vader 3 Pro DirectInput Gyro demo</title>
+  <script type="importmap">
+    {
+      "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.164.1/examples/jsm/"
+      }
+    }
+  </script>
+  <script type="module">
+    import * as THREE from 'three';
+
+    let camera, scene, renderer;
+    let mesh;
+
+    init();
+    animate();
+
+    function init() {
+      let width = 1280;
+      let height = 1024;
+      camera = new THREE.PerspectiveCamera(70, width / height, 0.1, 100);
+      camera.position.z = 2;
+
+      scene = new THREE.Scene();
+
+      mesh = new THREE.Mesh(
+        new THREE.BoxGeometry(1, 1, 1),
+        [
+          new THREE.MeshBasicMaterial({ color: 0xACBBE8 }),
+          new THREE.MeshBasicMaterial({ color: 0xF0B884 }),
+          new THREE.MeshBasicMaterial({ color: 0xE8E6A5 }),
+          new THREE.MeshBasicMaterial({ color: 0xBBE8B5 }),
+          new THREE.MeshBasicMaterial({ color: 0xEB9DA2 }),
+          new THREE.MeshBasicMaterial({ color: 0xC5ACE8 }),
+        ]
+      );
+
+      scene.add(mesh);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setPixelRatio(1);
+      renderer.setSize(width, height);
+      document.getElementById("cubeView").appendChild(renderer.domElement);
+    }
+
+    function remap(rangeStart, rangeEnd, value) {
+      const newLow = -Math.PI;
+      const newHigh = Math.PI;
+
+      return newLow + (newHigh - newLow) * ((value - rangeStart) / (rangeEnd - rangeStart));
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      if (window.resetCube) {
+        window.resetCube = false;
+        mesh.setRotationFromQuaternion(new THREE.Quaternion());
+      }
+
+      let sensetivity = 0.042;
+      let quaternionX = new THREE.Quaternion();
+      let quaternionY = new THREE.Quaternion();
+      let quaternionZ = new THREE.Quaternion();
+      quaternionX.setFromAxisAngle(new THREE.Vector3(-1, 0, 0), remap(-512, 512, window.gP ?? 0) * sensetivity);
+      quaternionY.setFromAxisAngle(new THREE.Vector3(0, 1, 0), remap(-32768, 32767, window.gR ?? 0) * sensetivity);
+      quaternionZ.setFromAxisAngle(new THREE.Vector3(0, 0, -1), remap(-512, 512, window.gY ?? 0) * sensetivity);
+      let quaternionComposite = mesh.quaternion;
+      quaternionComposite.multiply(quaternionX);
+      quaternionComposite.multiply(quaternionY);
+      quaternionComposite.multiply(quaternionZ);
+      quaternionComposite.normalize();
+      mesh.setRotationFromQuaternion(quaternionComposite);
+
+      renderer.render(scene, camera);
+    }
+  </script>
+  <script>
+    const connectDevice = async () => {
+      const deviceMatch = (device) => device !== undefined
+          && device.collections.length > 0
+          && device.collections[0].usagePage == 0xFFA0;
+
+      if (!(await navigator.hid.getDevices()).some(deviceMatch)) {
+        await navigator.hid.requestDevice({
+          filters: [
+            {
+              vendorId: 0x04B4,
+              productId: 0x2412,
+              usagePage: 0xFFA0,
+              usage: 0x01,
+            },
+          ],
+        });
+      }
+
+      for (let device of await navigator.hid.getDevices()) {
+        if (deviceMatch(device)) {
+          device.oninputreport = handleInputReport;
+          await device.open();
+        }
+      }
+    };
+
+    const handleInputReport = event => {
+      const dataView = new DataView(event.data.buffer, 0, event.data.buffer.length);
+
+      window.aX = dataView.getInt16(10, true);
+      window.aY = dataView.getInt16(12, true);
+      window.aZ = dataView.getInt16(14, true);
+
+      window.gP = dataView.getInt16(25, true);
+      window.gR = dataView.getInt16(28, true);
+      dataView.setInt8(18, dataView.getInt8(19));
+      window.gY = dataView.getInt16(17, true);
+
+      window.resetCube = (dataView.getInt8(9) & 0b00000010) >> 1 == 1;
+    }
+  </script>
+</head>
+
+<body>
+  <p>
+    <h3>Vader 3 Pro Gyro from DirectInput demo</h3>
+    Connect Vader 3 Pro over dongle or wire (not Bluetooth!), switch into DirectInput mode (hold circle/screenshot button + A till blue light) and press connect.<br/><br/>
+    Pressing start button on gamepad resets / zeroes the cube orientation. Accelerometer is not used in this demo, so: <br/>
+    1) it's gonna accumulate drift<br/>
+    2) you have to zero with gamepad horizontal / as if it's laying on table<br/>
+  </p>
+  <button onclick="connectDevice()">Connect</button>
+  <p></p>
+  <div id="cubeView"></div>
+  <p>
+    Gyro updates at exactly 100Hz, Accelerometer updates in ~50-53Hz range (unused in this demo)<br/>
+    HID input report format, bytes:<br/>
+    0-1 completely static, no idea<br/>
+    2 no idea as well, but first bit starts flipping at constant rate if aeromouse is enabled (if you configure OS to ignore aeromouse HID, then that could be used as latch-flag for screenshot button)<br/>
+    3 int8 gyro yaw 8 least significant bits [-512, 512]<br/>
+    4 first 4 bits: gyro pitch LSB, last 4 bits: gyro yaw MSB; combine with bytes 3 and 5 for 12-bit signed integer value<br/>
+    5 int8 gyro pitch 8 most significant bits [-512, 512]<br/>
+    6 button flags: 00, M4, M3, M2, M1, Z, C<br/>
+    7 button flags: 0000, HOME, 00, aeromouse/screenshot button<br/>
+    8 button flags: X, SELECT, B, A, LEFT, DOWN, RIGHT, UP <br/>
+    9 button flags: RS, LS, RT, LT, RB, LB, START, Y<br/>
+    10-11 int16le accelerometer, X-axis, 4096 is 1G<br/>
+    12-13 int16le accelerometer, Y-axis, -4800 (?) is about 1G in normal oriantation, 3800 triggers facing floor<br/>
+    14-15 int16le accelerometer, Z-axis, 4096 is 1G<br/>
+    16 int8 right stick X-axis<br/>
+    17 and 19 int16le, gyro yaw (yeah.. not continuous bytes for some reason) [-512, 512]<br/>
+    18 int8 right stick Y-axis<br/>
+    20 int8 left stick X-axis<br/>
+    21 int8 left stick Y-axis<br/>
+    22 uint8 left trigger analog<br/>
+    23 uint8 right trigger analog<br/>
+    24 last two bits are flags for triggers in digital mode, reported only if triggers are in discrete/short press mode<br/>
+    25 int16le gyro pitch [-512, 512]<br/>
+    27 completely static, no idea<br/>
+    28 int16le gyro roll [-32768, 32767]<br/>
+  </p>
+</body>
+
+</html>

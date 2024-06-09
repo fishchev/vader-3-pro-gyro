@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<!-- based on https://nondebug.github.io/webhid-explorer/ -->
+<html>
+
+<head>
+	<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+
+	<title>HID message analyser tool</title>
+	<script src="https://cdn.jsdelivr.net/npm/uplot@1.6.30/dist/uPlot.iife.js"></script>
+	<link href="https://cdn.jsdelivr.net/npm/uplot@1.6.30/dist/uPlot.min.css" rel="stylesheet">
+	<script>
+		let connectedDevices = [];
+		let selectedDevice = null;
+
+		// Displays the device chooser to allow the user to connect to a new device.
+		// The selection is updated to the newly connected device.
+		const connectDevice = async () => {
+			const devices = await navigator.hid.requestDevice({ filters: [] });
+			if (devices.length == 0)
+				return;
+
+			for (let device of devices)
+				await addDevice(device);
+		};
+
+		// Adds |device| to |connectedDevices|. Selects the device if there was no prior
+		// selection.
+		const addDevice = async (device) => {
+			if (connectedDevices.includes(device)) {
+				console.log('device already in connectedDevices');
+				return;
+			}
+			connectedDevices.push(device);
+			console.log(`device connected: ${device.productName}`);
+			if (selectedDevice === null)
+				await selectDevice(device);
+			updateDeviceMenu();
+		};
+
+		// Removes |device| from |connectedDevices|.
+		const removeDevice = device => {
+			if (device === selectedDevice)
+				selectedDevice = null;
+			for (let i = connectedDevices.length - 1; i >= 0; --i) {
+				if (connectedDevices[i] === device) {
+					connectedDevices.splice(i, 1);
+					console.log(`device disconnected: ${device.productName}`);
+					updateDeviceMenu();
+				}
+			}
+		};
+
+		var configuredPlot;
+		const startTime = new Date().valueOf();
+		var count = 0;
+		var divider = 4;
+
+		var dataPoints = [[], []];
+
+		function addData(data) {
+			if (count++ < divider) {
+				return;
+			}
+			count = 0;
+
+			if (dataPoints[0].length > 500) {
+				dataPoints[0].shift();
+				dataPoints[1].shift();
+			}
+
+			dataPoints[0].push(Date.now())
+			dataPoints[1].push(data)
+
+			configuredPlot.setData(dataPoints);
+		}
+
+		var maxValue = Number.MIN_SAFE_INTEGER;
+		var minValue = Number.MAX_SAFE_INTEGER;
+		var currentByte = 0;
+		var isSigned = true;
+		var isTwoBytes = false;
+		var isGyroBs = false;
+		var isLittleEndian = false;
+
+		const changeSettings = async (id) => {
+			if (id == "1") {
+				currentByte--;
+			} else if (id == "2") {
+				currentByte++;
+			} else if (id == "3") {
+				isSigned = !isSigned;
+			} else if (id == "4") {
+				isTwoBytes = !isTwoBytes;
+			} else if (id == "5") {
+				isGyroBs = !isGyroBs;
+			} else if (id == "6") {
+				divider /= 2;
+			} else if (id == "7") {
+				divider *= 2;
+			} else if (id == "8") {
+				isLittleEndian = !isLittleEndian;
+			} else {
+				return;
+			}
+
+			maxValue = Number.MIN_SAFE_INTEGER;
+			minValue = Number.MAX_SAFE_INTEGER;
+			dataPoints = [[], []];
+		}
+
+		document.addEventListener("keydown", function (event) {
+			changeSettings(event.key)
+		});
+
+		var UInt16 = function (value) {
+			return (value & 0xFFFF);
+		};
+
+		var Int16 = function (value) {
+			var ref = UInt16(value);
+			return (ref > 0x7FFF) ? ref - 0x10000 : ref;
+		};
+
+		var lastUpdate = new Date().valueOf();
+		var lastData = 0;
+		var updateTimeLast100 = [0];
+		var staleCount = 0;
+		var staleTime = lastUpdate;
+		var staleTimeLast100 = [0];
+
+		const handleInputReport = event => {
+			const inputReportTextView = document.getElementById('inputReport');
+			if (!inputReportTextView)
+				return;
+
+			let buffer = 'Current byte: ' + currentByte + '; isSigned: ' + isSigned + '; isTwoBytes: ' + isTwoBytes + '; isGyroYawBs: ' + isGyroBs + '; graph divider: ' + divider + '; littleEndian: ' + isLittleEndian + '\n\n';;
+			const reportData = new Uint8Array(event.data.buffer);
+
+			for (var i = 1; i <= reportData.length * 8; i += 8) {
+				const cByte = ~~((i - 1) / 8);
+				const padSymbol = cByte == currentByte || (isTwoBytes && cByte == currentByte + 1) ? 'v' : '-'; // bit magic just gives integer divison
+				buffer += ((i - (i % 8)) / 8).toString().padStart(8, padSymbol) + ' ';
+			}
+			buffer += '\n'
+
+			for (const [index, byte] of reportData.entries())
+				buffer += byte.toString(2).padStart(8, '0') + ' ';
+			buffer += '\n'
+
+			const dataView = new DataView(reportData.buffer, 0, reportData.length);
+			let newData = 0;
+			if (isTwoBytes) {
+				newData = isSigned ? dataView.getInt16(currentByte, isLittleEndian) : dataView.getUint16(currentByte, isLittleEndian);
+
+				//Vader 3 Pro specific bodges, replace with your device-specific bit manipulation
+				if (isGyroBs) {
+					if (currentByte == 17) {
+						dataView.setInt8(18, dataView.getInt8(19));
+					}
+
+					if (currentByte == 3 && isTwoBytes) {
+						newData = Int16((((reportData[4] & 0b00001000) != 0 ? 0xF0 : 0x00) << 8) | ((reportData[4] & 0b00001111) << 8) | reportData[3]);
+						buffer += newData.toString(2).padStart(16, '0');
+					} 
+					
+					if (currentByte == 5 && isTwoBytes) {
+						newData = Int16((((reportData[5] & 0b10000000) != 0 ? 0xF0 : 0x00) << 8) | reportData[5] << 4 | ((reportData[4] & 0b11110000) >> 4));
+						buffer += newData.toString(2).padStart(16, '0');
+					}
+				}
+			} else {
+				newData = isSigned ? dataView.getInt8(currentByte, isLittleEndian) : dataView.getUint8(currentByte, isLittleEndian);
+			}
+
+			if (newData > maxValue) {
+				maxValue = newData;
+			}
+			if (newData < minValue) {
+				minValue = newData;
+			}
+
+			let avgStaleDataTime = (staleTimeLast100.reduce((a, b) => a + b) / staleTimeLast100.length);
+			buffer += '\nTime between updates: ' + (updateTimeLast100.reduce((a, b) => a + b) / staleTimeLast100.length).toFixed(2).padStart(5, ' ') 
+				+ 'ms; accounting for stale/repeated data: ' + avgStaleDataTime.toFixed(2).padStart(5, ' ') + 'ms [' + (1000 / avgStaleDataTime).toFixed(1).padStart(4, ' ') + 'Hz]\n';
+			buffer += 'Min recorded value: ' + minValue.toFixed(2) + '; max recorder value: ' + maxValue.toFixed(2) + '\n'
+			
+			addData(newData);
+			inputReportTextView.innerHTML = buffer;
+
+			const currentUpdate = new Date().valueOf();
+			updateTimeLast100.push(currentUpdate - lastUpdate);
+			if (updateTimeLast100.length > 100) {
+				updateTimeLast100.shift();
+			}
+			lastUpdate = currentUpdate;
+			if (newData == lastData) {
+				staleCount++;
+			} else {
+				// console.log("stale count reset: " + staleCount + ' was stale for ' + (new Date().valueOf() - staleTime) + 'ms');
+				staleTimeLast100.push(new Date().valueOf() - staleTime);
+				if (staleTimeLast100.length > 100) {
+					staleTimeLast100.shift();
+				}
+				staleCount = 0;
+				staleTime = new Date().valueOf();
+			}
+			lastData = newData;
+		}
+
+		// Selects |device| and updates the device info display.
+		const selectDevice = async (device) => {
+			if (selectedDevice)
+				selectedDevice.oninputreport = null;
+
+			if (!device) {
+				selectedDevice = null;
+			} else {
+				let select = document.getElementById('deviceSelect');
+				for (let i = 0; i < select.options.length; ++i) {
+					if (select.options[i].device === device) {
+						select.value = i;
+						break;
+					}
+				}
+				selectedDevice = device;
+			}
+
+			if (selectedDevice) {
+				const inputReportTextView = document.getElementById('inputReport');
+				inputReportTextView.innerHTML = "no data is comming?";
+
+				selectedDevice.oninputreport = handleInputReport;
+				if (!selectedDevice.opened) {
+					try {
+						await selectedDevice.open();
+					} catch (e) {
+						if (e instanceof DOMException) {
+							console.log(`Error opening ${selectedDevice.productName}: ${e.message}`);
+						} else {
+							throw e;
+						}
+					}
+				}
+			}
+		};
+
+		// Updates the device selection menu to match |connectedDevices|.
+		const updateDeviceMenu = () => {
+			let select = document.getElementById('deviceSelect');
+			for (let i = select.options.length - 1; i >= 0; --i)
+				select.options[i] = null;
+
+			if (connectedDevices.length == 0) {
+				var opt = document.createElement('option');
+				opt.value = 0;
+				opt.device = null;
+				opt.innerHTML = 'No connected devices';
+				select.appendChild(opt);
+				return;
+			}
+
+			let index = 0;
+			for (let device of connectedDevices) {
+				var opt = document.createElement('option');
+				opt.value = index++;
+				opt.device = device;
+				opt.innerHTML = device.productName;
+				select.appendChild(opt);
+			}
+		};
+
+		// Called when the user changes the selected device.
+		const deviceSelectionChanged = () => {
+			let select = document.getElementById('deviceSelect');
+			selectDevice(select.options[select.value].device);
+		};
+
+		function configureCharts() {
+			var plotElement = document.getElementById('uPlot');
+			const opts = {
+				width: 1600,
+				height: 600,
+				pxAlign: false,
+				scales: {
+					x: {
+						time: false
+					},
+					y: {
+						range: () => {
+							return [minValue - Math.abs(minValue * 0.1), maxValue + maxValue * 0.1]
+						},
+					}
+				},
+				axes: [
+					{
+						show: false,
+					},
+					{
+						space: 100,
+						splits: [-32768, -16384, -8192, -4096, -2048, -1024, -512, -256, -128, -64, -32, 0, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768],
+					}
+				],
+				series: [
+					{},
+					{
+						label: "Data",
+						stroke: "red",
+						fill: "rgba(255,0,0,0.1)",
+					},
+				],
+			};
+
+			configuredPlot = new uPlot(opts, [], plotElement);
+		}
+
+		window.onload = async () => {
+			// Register for connection and disconnection events.
+			navigator.hid.onconnect = e => { addDevice(e.device); };
+			navigator.hid.ondisconnect = e => { removeDevice(e.device); };
+
+			// Fetch the list of connected devices.
+			const devices = await navigator.hid.getDevices();
+			for (let device of devices)
+				await addDevice(device);
+
+			configureCharts();
+		};
+	</script>
+</head>
+
+<body>
+	<H1>HID message analyser tool</H1>
+	<div id="uPlot"></div>
+	<h3>Device connection</h3>
+	<button onclick="connectDevice()">Connect new device</button>
+	<select id="deviceSelect" oninput="deviceSelectionChanged()"></select>
+	<h3>Window controls</h3>
+	<button onclick="changeSettings(1)">1) Back</button>
+	<button onclick="changeSettings(2)">2) Forward</button>
+	<button onclick="changeSettings(4)">4) Two bytes</button>
+	<h3>Interpretation controls</h3>
+	<button onclick="changeSettings(3)">3) Signed value</button>
+	<button onclick="changeSettings(8)">8) little endian</button>
+	<button onclick="changeSettings(5)">5) Gyro BS patches</button><br />
+	<h3>Plot controls</h3>
+	<button onclick="changeSettings(7)">7) slower</button>
+	<button onclick="changeSettings(6)">6) faster</button>
+	<br />
+	Input report<br />
+	<textarea id="inputReport" cols="4000" rows="10" disabled></textarea><br />
+</body>
+
+</html>
