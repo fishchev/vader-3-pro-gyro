@@ -1,12 +1,12 @@
-Internet said that Flydigi reports only 2 gyroscope axis outside of Switch emulation mode (e.g. [reWASD manual says so](https://help.rewasd.com/how-to-remap/supported-devices.html#flydigi)), but I've found no substantial proof (_why would they make it just two?_) and decided to take a closer look. 
-What I've found out is that at least with Vader 3 Pro data for all 6 axis of IMU is being reported.
+I've found no good proof (beyond [reWASD manual](https://help.rewasd.com/how-to-remap/supported-devices.html#flydigi) saying so) that Flydigi controllers report only two axes outside of Switch emulation mode and decided to take a closer look. 
+What I've found out is that at least with Vader 3 Pro IMU data for all 6 axes (gyroscope and accelerometer) is being reported.
 
-- [Gyro Demo](https://fishchev.github.io/vader-3-pro-gyro/) -- it's simple, so only gyro is used / expect quick drift
-- [HID input report analyzer](https://fishchev.github.io/vader-3-pro-gyro/hid-message-analyser-tool.html) - tool I've made to help me figure out message format, allows to select byte and plot it's value over time; could be used to measure real Gyro/Accel/etc refresh rate (not just message rate, but how ofter actual new values are reported); based on [webhid-explorer](https://github.com/nondebug/webhid-explorer). 
+- [Gyro Demo](https://fishchev.github.io/vader-3-pro-gyro/) -- it's simple, so no attempts at sensor fusion / fighting drift
+- [HID input report analyzer](https://fishchev.github.io/vader-3-pro-gyro/hid-message-analyser-tool.html) - tool I've thrown together to help me figure out message format, allows to select some byte and plot its value over time, so you could make sense of it; could be used to measure real Gyro/Accel/etc refresh rate (how often actual new values are reported); based on [webhid-explorer](https://github.com/nondebug/webhid-explorer). 
 
-Update rate is 1000Hz when using dongle, 500Hz when wired (yes)\
+Update rate is 1000Hz when using dongle, 500Hz when wired (no idea why, but yes)\
 Gyroscope updates at exactly 100Hz and accelerometer updates in ~50-53Hz range\
-Accelerometer seems to self-calibrate to 1G corresponding to 4096 value whenever gamepad is left untouched for few seconds on hard surface; not sure whether it's my unit, but Y axis behaves strangely in comparasion.
+Accelerometer seems to self-calibrate to 1G corresponding to 4096 value whenever gamepad is left untouched for few seconds on hard surface; not sure if it's just my unit, but Y axis behaves strangely in comparasion.
 
 Vader 3 Pro DInput HID report format
 |bytes|format|range|comment|
@@ -21,10 +21,10 @@ Vader 3 Pro DInput HID report format
 | 8 | flags | | X, SELECT, B, A, LEFT, DOWN, RIGHT, UP 
 | 9 | flags | | RS, LS, RT, LT, RB, LB, START, Y
 | 10-11 | int16le | [-32768, 32767] | accelerometer, X-axis, 4096 is 1G
-| 12-13 | int16le | [-32768, 32767] | accelerometer, Y-axis, -4800 (?) is about 1G in normal oriantation, 3800 triggers facing floor
+| 12-13 | int16le | [-32768, 32767] | accelerometer, Y-axis, -4800 (?) is about 1G in normal orientation, 3800 triggers facing floor
 | 14-15 | int16le | [-32768, 32767] | accelerometer, Z-axis, 4096 is 1G
 | 16 | int8 | | right stick X-axis
-| 17 and 19 | int16le | [-512, 512] | gyro yaw (yeah.. not continuous bytes for some reason) 
+| 17 and 19 | int16le | [-512, 512] | gyro yaw (discontinuous bytes)
 | 18 | int8 | | right stick Y-axis
 | 20 | int8 | | left stick X-axis
 | 21 | int8 | | left stick Y-axis
