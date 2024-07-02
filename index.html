@@ -63,13 +63,13 @@
         mesh.setRotationFromQuaternion(new THREE.Quaternion());
       }
 
-      let sensetivity = 0.042;
+      let sensitivity = window.sensitivity ?? 0.042;
       let quaternionX = new THREE.Quaternion();
       let quaternionY = new THREE.Quaternion();
       let quaternionZ = new THREE.Quaternion();
-      quaternionX.setFromAxisAngle(new THREE.Vector3(-1, 0, 0), remap(-512, 512, window.gP ?? 0) * sensetivity);
-      quaternionY.setFromAxisAngle(new THREE.Vector3(0, 1, 0), remap(-32768, 32767, window.gR ?? 0) * sensetivity);
-      quaternionZ.setFromAxisAngle(new THREE.Vector3(0, 0, -1), remap(-512, 512, window.gY ?? 0) * sensetivity);
+      quaternionX.setFromAxisAngle(new THREE.Vector3(-1, 0, 0), remap(-512, 512, window.gP ?? 0) * sensitivity);
+      quaternionY.setFromAxisAngle(new THREE.Vector3(0, 1, 0), remap(-32768, 32767, window.gR ?? 0) * sensitivity);
+      quaternionZ.setFromAxisAngle(new THREE.Vector3(0, 0, -1), remap(-512, 512, window.gY ?? 0) * sensitivity);
       let quaternionComposite = mesh.quaternion;
       quaternionComposite.multiply(quaternionX);
       quaternionComposite.multiply(quaternionY);
@@ -121,6 +121,19 @@
 
       window.resetCube = (dataView.getInt8(9) & 0b00000010) >> 1 == 1;
     }
+
+    window.addEventListener("load", (event) => {
+      const sensitivityOutput = document.querySelector("#sensitivity-value");
+      const sensitivityInput = document.querySelector("#sensitivity-input");
+      sensitivityInput.value = 0.042;
+      window.sensitivity = sensitivityInput.value;
+      sensitivityOutput.textContent = sensitivityInput.value;
+      sensitivityInput.addEventListener("input", (event) => {
+        sensitivityOutput.textContent = event.target.value;
+        console.log(event.target.value);
+        window.sensitivity = event.target.value;
+      });
+    });
   </script>
 </head>
 
@@ -128,15 +141,17 @@
   <p>
     <h3>Vader 3 Pro Gyro DirectInput Demo</h3>
     Connect the Vader 3 Pro via dongle or wire (not Bluetooth!), switch to DirectInput mode (hold the circle/screenshot button + A until the blue light appears) and then press 'connect'.<br/><br/>
-    Pressing the 'start' button on the gamepad resets/zeroes the cube's orientation. Accelerometer is not used in this demo, so: <br/>
-    1) it will accumulate drift<br/>
-    2) you must zero it with the gamepad horizontal, as if it were lying on a table<br/>
+    Pressing the 'start' button on the gamepad resets/zeroes the cube's orientation.
   </p>
   <p>
     Description of message format could be found <a href="https://github.com/fishchev/vader-3-pro-gyro/blob/main/README.md">here</a>.
   </p>
   <button onclick="connectDevice()">Connect</button>
   <p></p>
+  <div>
+    <label for="sensitivity">Sensetivity: <output id="sensitivity-value"></output></label><br/>
+    <input type="range" id="sensitivity-input" name="volume" min="0" max="0.2" step="0.0001" style="width: 1280px"/>
+  </div>
   <div id="cubeView"></div>
 </body>
 
