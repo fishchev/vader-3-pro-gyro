@@ -16,10 +16,32 @@
     import * as THREE from 'three';
 
     let camera, scene, renderer;
-    let mesh;
+    let controllerGroup, controllerGroupClone;
+    let xB, yB, aB, bB, cB, zB;
+    let startB, selectB, homeB, circleB;
+    let leftB, upB, rightB, downB;
+    let m1B, m2B, m3B, m4B;
+    let lB, lT, rB, rT;
 
     init();
     animate();
+
+    function addButton(group, x, y, z, scale) {
+      let gridScale = 0.13;
+      let boxSideLength = 0.1 * (scale ?? 1);
+      let mesh = new THREE.Mesh(
+        new THREE.BoxGeometry(
+          boxSideLength, 
+          boxSideLength,
+          boxSideLength
+        ),
+        new THREE.MeshBasicMaterial( {color: 0x808080} )
+      );
+      mesh.position.set( x * gridScale, y * gridScale, z * gridScale);
+      group.add(mesh);
+
+      return mesh;
+    }
 
     function init() {
       let width = 1280;
@@ -28,9 +50,11 @@
       camera.position.z = 2;
 
       scene = new THREE.Scene();
+      controllerGroup = new THREE.Group();
+      scene.add(controllerGroup);
 
-      mesh = new THREE.Mesh(
-        new THREE.BoxGeometry(1.5, 1, 0.5),
+      let controllerBody = new THREE.Mesh(
+        new THREE.BoxGeometry(1.6, 1, 0.5),
         [
           new THREE.MeshBasicMaterial({ color: 0xACBBE8 }),
           new THREE.MeshBasicMaterial({ color: 0xF0B884 }),
@@ -40,8 +64,52 @@
           new THREE.MeshBasicMaterial({ color: 0xC5ACE8 }),
         ]
       );
+      controllerGroup.add(controllerBody);
 
-      scene.add(mesh);
+      let faceButtonGroup = new THREE.Group();
+      xB = addButton( faceButtonGroup, -1, 0, 0 );
+      yB = addButton( faceButtonGroup, 0, 1, 0 );
+      aB = addButton( faceButtonGroup, 0, -1, 0 );
+      bB = addButton( faceButtonGroup, 1, 0, 0 );
+      cB = addButton( faceButtonGroup, 0.6, -2.2, 0 );;
+      zB = addButton( faceButtonGroup, 1.6, -1.4, 0 );
+      faceButtonGroup.position.set(0.45, 0.2, 0.25)
+      controllerGroup.add(faceButtonGroup);      
+      
+      let dpadButtonGroup = new THREE.Group();
+      leftB = addButton( dpadButtonGroup, -1, 0, 0 );
+      upB = addButton( dpadButtonGroup, 0, 1, 0 );
+      rightB = addButton( dpadButtonGroup, 1, 0, 0 );
+      downB = addButton( dpadButtonGroup, 0, -1, 0 );
+      dpadButtonGroup.position.set(-0.2, -0.25, 0.25)
+      controllerGroup.add(dpadButtonGroup);
+
+      let navButtonGroup = new THREE.Group();
+      selectB = addButton( navButtonGroup, -1.5, 2.5, 0, 0.5 );
+      startB = addButton( navButtonGroup, 1.5, 2.5, 0, 0.5 );
+      circleB = addButton( navButtonGroup, -0.3, -3.5, 0, 0.5 );
+      homeB = addButton( navButtonGroup, 0.3, -3.5, 0, 0.5 );
+      navButtonGroup.position.set( 0, 0, 0.25)
+      controllerGroup.add(navButtonGroup);
+
+      let backButtonGroup = new THREE.Group();
+      m1B = addButton( backButtonGroup, 3, -2.2, 0 );
+      m2B = addButton( backButtonGroup, -3, -2.2, 0 );
+      m3B = addButton( backButtonGroup, 1.5, -2, 0 );
+      m4B = addButton( backButtonGroup, -1.5, -2, 0 );
+      backButtonGroup.position.set( 0, 0, -0.25)
+      controllerGroup.add(backButtonGroup);      
+      
+      let shoulderButtonGroup = new THREE.Group();
+      lB = addButton( shoulderButtonGroup, -5, 3.5, 1, 2 );
+      lT = addButton( shoulderButtonGroup, -5, 3.5, -1, 2);
+      rB = addButton( shoulderButtonGroup, 5, 3.5, 1, 2 );
+      rT = addButton( shoulderButtonGroup, 5, 3.5, -1, 2 );
+      controllerGroup.add(shoulderButtonGroup);
+
+      controllerGroupClone = controllerGroup.clone(true);
+      controllerGroupClone.position.set(4.5, 3.5, -5);
+      scene.add(controllerGroupClone);
 
       renderer = new THREE.WebGLRenderer({ antialias: true });
       renderer.setPixelRatio(1);
@@ -60,7 +128,8 @@
       requestAnimationFrame(animate);
       if (window.resetCube) {
         window.resetCube = false;
-        mesh.setRotationFromQuaternion(new THREE.Quaternion());
+        controllerGroup.setRotationFromQuaternion(new THREE.Quaternion());
+        controllerGroupClone.setRotationFromQuaternion(new THREE.Quaternion());
       }
 
       let sensitivity = window.sensitivity ?? 0.042;
@@ -70,12 +139,47 @@
       quaternionX.setFromAxisAngle(new THREE.Vector3(-1, 0, 0), remap(-512, 512, window.gP ?? 0) * sensitivity);
       quaternionY.setFromAxisAngle(new THREE.Vector3(0, 1, 0), remap(-32768, 32767, window.gR ?? 0) * sensitivity);
       quaternionZ.setFromAxisAngle(new THREE.Vector3(0, 0, -1), remap(-512, 512, window.gY ?? 0) * sensitivity);
-      let quaternionComposite = mesh.quaternion;
+      let quaternionComposite = controllerGroup.quaternion;
       quaternionComposite.multiply(quaternionX);
       quaternionComposite.multiply(quaternionY);
       quaternionComposite.multiply(quaternionZ);
       quaternionComposite.normalize();
-      mesh.setRotationFromQuaternion(quaternionComposite);
+      controllerGroup.setRotationFromQuaternion(quaternionComposite);
+      
+      let flipOnXQuaternion = new THREE.Quaternion();
+      flipOnXQuaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
+      let cloneQuaternion = quaternionComposite.clone()
+      cloneQuaternion.multiply(flipOnXQuaternion);
+      cloneQuaternion.normalize();
+      cloneQuaternion.invert();
+      controllerGroupClone.setRotationFromQuaternion(cloneQuaternion);
+
+      xB.material.color.setHex(window.xB ?? false ? 0x00ff00 : 0x808080);
+      yB.material.color.setHex(window.yB ?? false ? 0x00ff00 : 0x808080);
+      bB.material.color.setHex(window.bB ?? false ? 0x00ff00 : 0x808080);
+      aB.material.color.setHex(window.aB ?? false ? 0x00ff00 : 0x808080);
+      cB.material.color.setHex(window.cB ?? false ? 0x00ff00 : 0x808080);
+      zB.material.color.setHex(window.zB ?? false ? 0x00ff00 : 0x808080);
+
+      leftB.material.color.setHex(window.leftB ?? false ? 0x00ff00 : 0x808080);
+      upB.material.color.setHex(window.upB ?? false ? 0x00ff00 : 0x808080);
+      rightB.material.color.setHex(window.rightB ?? false ? 0x00ff00 : 0x808080);
+      downB.material.color.setHex(window.downB ?? false ? 0x00ff00 : 0x808080);
+
+      selectB.material.color.setHex(window.selectB ?? false ? 0x00ff00 : 0x808080);
+      startB.material.color.setHex(window.startB ?? false ? 0x00ff00 : 0x808080);
+      circleB.material.color.setHex(window.circleB ?? false ? 0x00ff00 : 0x808080);
+      homeB.material.color.setHex(window.homeB ?? false ? 0x00ff00 : 0x808080);
+
+      m1B.material.color.setHex(window.m1B ?? false ? 0x00ff00 : 0x808080);
+      m2B.material.color.setHex(window.m2B ?? false ? 0x00ff00 : 0x808080);
+      m3B.material.color.setHex(window.m3B ?? false ? 0x00ff00 : 0x808080);
+      m4B.material.color.setHex(window.m4B ?? false ? 0x00ff00 : 0x808080);
+
+      lB.material.color.setHex(window.lB ?? false ? 0x00ff00 : 0x808080);
+      rB.material.color.setHex(window.rB ?? false ? 0x00ff00 : 0x808080);
+      lT.material.color.set(new THREE.Color( 0x808080 ).lerp(new THREE.Color( 0x00ff00 ), window.lT));
+      rT.material.color.set(new THREE.Color( 0x808080 ).lerp(new THREE.Color( 0x00ff00 ), window.rT));
 
       renderer.render(scene, camera);
     }
@@ -118,6 +222,33 @@
       window.gR = dataView.getInt16(28, true);
       dataView.setInt8(18, dataView.getInt8(19));
       window.gY = dataView.getInt16(17, true);
+
+      window.xB = dataView.getInt8(8) & (1 << 7);
+      window.bB = dataView.getInt8(8) & (1 << 5);
+      window.aB = dataView.getInt8(8) & (1 << 4);
+      window.yB = dataView.getInt8(9) & (1 << 0);
+      window.cB = dataView.getInt8(6) & (1 << 0);
+      window.zB = dataView.getInt8(6) & (1 << 1);
+
+      window.leftB = dataView.getInt8(8) & (1 << 3);
+      window.upB = dataView.getInt8(8) & (1 << 0);
+      window.rightB = dataView.getInt8(8) & (1 << 1);
+      window.downB = dataView.getInt8(8) & (1 << 2);
+
+      window.selectB = dataView.getInt8(8) & (1 << 6);
+      window.startB = dataView.getInt8(9) & (1 << 1);
+      window.circleB = dataView.getInt8(7) & (1 << 0);
+      window.homeB = dataView.getInt8(7) & (1 << 3);
+
+      window.m1B = dataView.getInt8(6) & (1 << 2);
+      window.m2B = dataView.getInt8(6) & (1 << 3);
+      window.m3B = dataView.getInt8(6) & (1 << 4);
+      window.m4B = dataView.getInt8(6) & (1 << 5);
+
+      window.lB = dataView.getInt8(9) & (1 << 2);
+      window.lT = dataView.getUint8(22) / 255.0;
+      window.rB = dataView.getInt8(9) & (1 << 3);
+      window.rT = dataView.getUint8(23) / 255.0;
 
       window.resetCube = (dataView.getInt8(9) & 0b00000010) >> 1 == 1;
     }
