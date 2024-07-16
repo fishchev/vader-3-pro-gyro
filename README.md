@@ -1,4 +1,4 @@
-I've found no good proof (beyond [reWASD manual](https://help.rewasd.com/how-to-remap/supported-devices.html#flydigi) saying so) that Flydigi controllers report only two axes outside of Switch emulation mode and decided to take a closer look. 
+I've found no good proof (beyond [reWASD manual](https://help.rewasd.com/how-to-remap/supported-devices.html#flydigi) saying so \[edit: [reWASD explained that it's firmware related and considers adding support now](https://github.com/fishchev/vader-3-pro-gyro/issues/1)\]) that Flydigi controllers report only two axes outside of Switch emulation mode and decided to take a closer look. 
 What I've found out is that at least with Vader 3 Pro IMU data for all 6 axes (gyroscope and accelerometer) is being reported.
 
 - [Gyro Demo](https://fishchev.github.io/vader-3-pro-gyro/) -- it's simple, so no attempts at sensor fusion / fighting drift
